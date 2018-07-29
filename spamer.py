@@ -1,87 +1,153 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from time import sleep
-from random import randrange
-import requests
-import socks
-import socket
-from stem import Signal
-from stem.control import Controller
+import csv
+import configparser
+import string
+import re
+# import requests
+# import socks
+# import socket
+# from stem import Signal
+# from stem.control import Controller
 
 
-def connectTor():
-   print('Connect to Tor...')
-   socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
-   socket._real_socket = socket.socket
-   socket.socket = socks.socksocket
-   socks.wrapmodule(smtplib)
-   print(' new IP', requests.get("http://icanhazip.com/").text)
-
-    
-def newIdentify():
-   socks.setdefaultproxy()
-   with Controller.from_port(port=9151) as controller:
-       controller.authenticate()
-       controller.signal(Signal.NEWNYM)
-   connectTor()
-
-   
-def connectMail():
-   global SERVER
-   SERVER = smtplib.SMTP_SSL(SERVER_NAME, SERVER_PORT)
-   # SERVER = smtplib.SMTP(SERVER_NAME, SERVER_PORT)  # if you use TLS
-   SERVER.set_debuglevel(0)
-   # SERVER.starttls()  # if you use TLS
-   SERVER.login(USER_NAME, USER_PASSWORD)
+# def connectTor():
+#     print('Connect to Tor...')
+#     socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
+#     #socket._real_socket = socket.socket
+#     #socket.socket = socks.socksocket
+#     socks.wrapmodule(smtplib)
+#     print(' new IP', requests.get("http://icanhazip.com/").text)
 
 
-SERVER_NAME = 'srv_name'
-SERVER_PORT = 465
-USER_NAME = 'login'
-USER_PASSWORD = 'pass'
-FROMADDR = 'ur_email'
+# def newIdentify():
+#     socks.setdefaultproxy()
+#     with Controller.from_port(port = 9151) as controller:
+#         controller.authenticate()
+#         controller.signal(Signal.NEWNYM)
+#     connectTor()
 
-TOADDRLIST = open('toaddr.txt').read().splitlines()
 
-MSG_SUBJ = 'Hello, World'
-MSG_TEXT = open('text.html').read()
-MSG = MIMEMultipart()
-MSG['Subject'] = MSG_SUBJ
-MSG['From'] = FROMADDR
-MSG.attach(MIMEText(MSG_TEXT, 'html', 'utf-8'))
+def get_server_list():
+    return [label for label in server_config_ini.sections() if 'smtp' in label.lower()]
 
-connectTor()
-connectMail()
 
-COUNTER = 0
-for TOADDR in TOADDRLIST:
-    if COUNTER//10 == COUNTER/10 and COUNTER!=0:
-        SERVER.quit()
-        newIdentify()
-        connectMail()
-    MSG['To'] = TOADDR
-    SERVER.sendmail(FROMADDR, TOADDR, MSG.as_string())
-    print(COUNTER, 'Message send to', TOADDR)
-    sleep(randrange(5, 10, 1))
-    COUNTER += 1
-print("Sending completed")
+def get_connected_servers(server_label_list):
+    server_con_list = []
+    for server_label in server_label_list:
+        connect = connect_mail_server(server_label)
+        if connect:
+            server_con_list.append((connect, server_label))
+    return server_con_list
 
-SERVER.quit()
-socks.setdefaultproxy()
 
-'''
-print(' new IP', requests.get("http://httpbin.org/ip").text)
- from email.mime.base import MIMEBase
-import email.encoders
-MSG_FILE = MIMEBase('application', "octet-stream")
-MSG_FILE.set_payload(open('success-baby.jpg', 'rb').read())
-email.encoders.encode_base64(MSG_FILE)
-MSG_FILE.add_header('Content-Disposition', 'attachment', filename="123")
- from email.mime.image import MIMEImage
-MSG_FILE = open('success-baby.jpg', 'rb').read()
-MSG_FILE = MIMEImage(MSG_FILE)
-MSG_FILE.add_header('Content-ID', '<image1>', filename="123")
-    #MSG.attach(MIMEImage(MSG_FILE))
-    MSG.attach(MSG_FILE)
-'''
+def connect_mail_server(server_label):
+    server_name = server_config_ini[server_label]['server_name']
+    server_port = server_config_ini[server_label]['server_port']
+    user_name = server_config_ini[server_label]['user_name']
+    user_password = server_config_ini[server_label]['user_password']
+    print('Connecting to mail server %s ...' % server_name, end=' ')
+    try:
+        if int(server_config_ini[server_label]['ssl']):
+            mail_server = smtplib.SMTP_SSL(server_name, server_port)  # if you use SSL
+        else:
+            mail_server = smtplib.SMTP(server_name, server_port)  # if you use TLS
+            mail_server.starttls()
+        mail_server.set_debuglevel(0)
+        mail_server.login(user_name, user_password)
+    except Exception as e:
+        print('Not connected!')
+        print('%s: %s' % (e.__class__.__name__, e))
+    else:
+        print('Connected')
+        return mail_server
+
+
+def get_message(from_, to):
+    global msg
+    msg = MIMEMultipart()
+    msg['From'] = from_
+    msg['To'] = to
+    msg['Subject'] = msg_subj
+    msg.attach(MIMEText(msg_text, 'html', 'utf-8'))
+
+
+try:
+    open('config_smtp.ini').read()
+except FileNotFoundError:
+    print('File "config_smtp.ini" not found.\nFile create. Specify server settings.')
+    with open('config_smtp.ini', 'w') as config_smtp:
+        config_smtp.write('[smtp1]\n'
+                          'SERVER_NAME = \n'
+                          'SERVER_PORT =\n'
+                          'USER_NAME =\n'
+                          'USER_PASSWORD =\n'
+                          'SSL = 0\n'
+                          'FROM_ADR =')
+finally:
+    server_config_ini = configparser.ConfigParser()
+    server_config_ini.read('config.ini')
+
+# to_adr_list = open('toadr.txt').read().splitlines()
+try:
+    with open('*.csv', 'r') as f:
+        to_adr_list = [r[0] for r in csv.reader(f) if r]
+except FileNotFoundError:
+    print('Not found address list!')
+    to_adr_list = []
+
+msg_subj = 'Subject'
+msg_text = open('text.html').read()
+
+try:
+    black_list = open('blacklist.txt').read().splitlines()
+except FileNotFoundError:
+    black_list = []
+
+if __name__ == '__main__':
+
+    server_conn_list = get_connected_servers(get_server_list())
+
+    print('Start sending')
+
+    for counter, to_adr in enumerate(to_adr_list):
+        to_adr_ascii = ''.join(i for i in to_adr if i in string.ascii_letters + string.digits + '@._-')
+        if not re.search(r'(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6})', to_adr_ascii):
+            print(counter, "Message DON'T send to %s. Incorrect format!" % to_adr)
+            continue
+        elif to_adr_ascii in black_list:
+            print(counter, "Message DON'T send. %s in black list!" % to_adr)
+            continue
+        for server, name in server_conn_list:
+            server.helo()
+            get_message(server_config_ini[name]['from_adr'], to_adr_ascii)
+            try:
+                server.sendmail(server_config_ini[name]['from_adr'], to_adr_ascii, msg.as_string())
+            except smtplib.SMTPServerDisconnected as exc:
+                print('Server %s disconnected' % name)
+                print('%s: %s' % (exc.__class__.__name__, exc))
+                server_conn_list.remove((server, name))
+                continue
+            except Exception as exc:
+                print(counter, "Message DON'T send to", to_adr)
+                print('%s: %s' % (exc.__class__.__name__, exc))
+                break
+            else:
+                server_conn_list.remove((server, name))
+                server_conn_list.append((server, name))
+                print(counter, 'Message send to', to_adr_ascii)
+                sleep(13 / len(server_conn_list) if len(server_conn_list) else 13)
+                break
+        else:
+            print('No servers to send')
+            break
+    else:
+        print('Sending completed')
+    for server, name in server_conn_list:
+        print('Disconnecting from mail server %s' % name)
+        server.quit()
