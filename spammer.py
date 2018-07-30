@@ -93,7 +93,6 @@ finally:
     server_config_ini = configparser.ConfigParser()
     server_config_ini.read('config.ini')
 
-# to_adr_list = open('toadr.txt').read().splitlines()
 try:
     with open('*.csv', 'r') as f:
         to_adr_list = [r[0] for r in csv.reader(f) if r]
