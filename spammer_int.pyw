@@ -17,7 +17,7 @@ class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.master.title('JMail alpha v0.0.1')
-        self.master.geometry('1024x768')
+        # self.master.geometry('1024x768')
 
         self.config_ini = None
         self.msg_subj = None
@@ -36,16 +36,8 @@ class Application(tk.Frame):
         try:
             open('config.ini').read()
         except FileNotFoundError:
-            with open('config.ini', 'w') as config_smtp:
-                config_smtp.write(
-                    '\n[smtp1]\n'
-                    'SERVER_NAME = \n'
-                    'SERVER_PORT =\n'
-                    'USER_NAME =\n'
-                    'USER_PASSWORD =\n'
-                    'SSL = 0\n'
-                    'FROM_ADR =\n')
-        finally:
+            pass
+        else:
             self.config_ini = configparser.ConfigParser()
             self.config_ini.read('config.ini')
 
@@ -61,37 +53,49 @@ class Application(tk.Frame):
         settings_menu.add_command(label='Servers', command=self.servers_set_ui)
         menu_bar.add_cascade(label='Settings', menu=settings_menu)
 
-        to_label = tk.Label(self.master, text='To: ')
+        frame_mail = tk.Frame(self.master)
+        frame_mail.grid(sticky='w')
+
+        to_label = tk.Label(frame_mail, text='To: ')
         to_label.grid(row=0, column=0, sticky='w')
-        to_button = tk.Button(self.master, text="To", command=self.to_adr_list_open, width=10)
+        to_button = tk.Button(frame_mail, text="To", command=self.to_adr_list_open, width=10)
         to_button.grid(row=0, column=1, sticky='w')
 
-        from_label = tk.Label(self.master, text='From: ')
+        from_label = tk.Label(frame_mail, text='From: ')
         from_label.grid(row=1, column=0, sticky='w')
-        from_str = '; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label)
-        from_label = tk.Label(self.master, text=from_str)
+        if self.config_ini:
+            from_str = '; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label)
+        else:
+            from_str = ''
+        from_label = tk.Label(frame_mail, text=from_str)
         from_label.grid(row=1, column=1, sticky='w')
 
-        subject_label = tk.Label(self.master, text='Subject: ')
+        subject_label = tk.Label(frame_mail, text='Subject: ')
         subject_label.grid(row=2, column=0, sticky='w')
         subject = tk.StringVar()
         subject.set(self.msg_subj if self.msg_subj else 'Subject')
-        self.msg_subj_entry = tk.Entry(self.master, text=subject, textvariable=subject, width=75)
+        self.msg_subj_entry = tk.Entry(frame_mail, text=subject, textvariable=subject, width=75)
         self.msg_subj_entry.grid(row=2, column=1, sticky='w')
-        msg_subj_button = tk.Button(self.master, text="Save", command=self.msg_subj_open, width=10)
+        msg_subj_button = tk.Button(frame_mail, text="Save", command=self.msg_subj_open, width=10)
         msg_subj_button.grid(row=2, column=2, sticky='w')
 
-        mag_label = tk.Label(self.master, text='Mail: ')
-        mag_label.grid(row=3, column=0, sticky='w')
-        msg_button = tk.Button(self.master, text="Mail", command=self.msg_open, width=10)
+        msg_label = tk.Label(frame_mail, text='Mail: ')
+        msg_label.grid(row=3, column=0, sticky='w')
+        msg_button = tk.Button(frame_mail, text="Mail", command=self.msg_open, width=10)
         msg_button.grid(row=3, column=1, sticky='w')
 
-        start_button = tk.Button(self.master, text="Connect", command=self.con_servers, width=10)
-        start_button.grid(row=4, column=0, sticky='w')
-        start_button = tk.Button(self.master, text="Start", command=self.star_sending, width=10)
-        start_button.grid(row=4, column=1, sticky='e')
-        start_button = tk.Button(self.master, text="Stop", command='', width=10)
-        start_button.grid(row=4, column=2, sticky='w')
+        action_frame = tk.Frame(self.master)
+        action_frame.grid(sticky='w')
+
+        con_button = tk.Button(action_frame, text="Connect", command=self.connect_servers, width=10)
+        con_button.grid(row=4, column=0, sticky='w')
+        disconnect_button = tk.Button(action_frame, text="Disconnect", command=self.disconnect_servers, width=10)
+        disconnect_button.grid(row=4, column=1, sticky='w')
+
+        start_button = tk.Button(action_frame, text="Start", command=self.star_sending, width=10)
+        start_button.grid(row=5, column=0, sticky='w')
+        stop_button = tk.Button(action_frame, text="Stop", command='', width=10)
+        stop_button.grid(row=5, column=1, sticky='w')
 
     def msg_subj_open(self):
         self.msg_subj = self.msg_subj_entry.get()
@@ -114,15 +118,29 @@ class Application(tk.Frame):
         self.quit()
 
     def servers_set_ui(self):
-        servers_set_win = tk.Toplevel(self.master)
-        servers_set_win.geometry('640x480')
-        servers_set_win.title('Servers settings')
-        server_label_list = [label for label in self.config_ini.sections() if 'smtp' in label.lower()]
-        for count, server_label in enumerate(server_label_list):
-            tk.Label(servers_set_win, text=str(count)+'.').grid(row=count, column=0, sticky='w')
-            tk.Label(servers_set_win, text=self.config_ini[server_label]['server_name']).grid(row=count, column=1, sticky='w')
-            tk.Button(servers_set_win, text='Edit', command=self.server_set_ui, width=10).grid(row=count, column=2, sticky='w')
-            tk.Button(servers_set_win, text='Delete', command=self.server_delete, width=10).grid(row=count, column=3, sticky='w')
+        servers_set_frame = tk.Toplevel(self.master)
+        # servers_set_win.geometry('640x480')
+        servers_set_frame.title('Servers settings')
+
+        servers_frame = tk.Frame(servers_set_frame)
+        servers_frame.grid()
+
+        if self.config_ini:
+            server_label_list = [label for label in self.config_ini.sections() if 'smtp' in label.lower()]
+            for count, server_label in enumerate(server_label_list):
+                tk.Label(servers_frame, text=str(count+1)+'.').grid(row=count, column=0, sticky='w')
+                tk.Label(servers_frame, text=self.config_ini[server_label]['server_name']).grid(row=count, column=1, sticky='w')
+                tk.Button(servers_frame, text='Edit', command=self.server_set_ui, width=10).grid(row=count, column=2, sticky='w')
+                tk.Button(servers_frame, text='Delete', command=self.server_delete, width=10).grid(row=count, column=3, sticky='w')
+
+        add_server_frame = tk.Frame(servers_set_frame)
+        add_server_frame.grid(sticky='w')
+        tk.Button(add_server_frame, text='Add', command=self.server_set_ui, width=10).grid(sticky='w')
+
+        action_frame = tk.Frame(servers_set_frame)
+        action_frame.grid(sticky='e')
+        save_button = tk.Button(action_frame, text="Save", command='', width=10).grid(row=0, column=0)
+        cancel_button = tk.Button(action_frame, text="Cancel", command='', width=10).grid(row=0, column=1)
 
     def servers_set_save(self):
         pass
@@ -131,7 +149,28 @@ class Application(tk.Frame):
         pass
 
     def server_set_ui(self):
-        server_set_win = tk.Toplevel(self.master)
+        server_set_frame = tk.Toplevel(self.master)
+        server_set_frame.title('Server configure')
+
+        config_frame = tk.Frame(server_set_frame)
+        config_frame.grid()
+        tk.Label(config_frame, text='Server name: ').grid(row=0, column=0, sticky='w')
+        server_name_entry = tk.Entry(config_frame).grid(row=0, column=1, sticky='w')
+        tk.Label(config_frame, text='Server port: ').grid(row=1, column=0, sticky='w')
+        server_port_entry = tk.Entry(config_frame).grid(row=1, column=1, sticky='w')
+        tk.Label(config_frame, text='User name: ').grid(row=2, column=0, sticky='w')
+        user_name_entry = tk.Entry(config_frame).grid(row=2, column=1, sticky='w')
+        tk.Label(config_frame, text='User password: ').grid(row=3, column=0, sticky='w')
+        user_password_entry = tk.Entry(config_frame).grid(row=3, column=1, sticky='w')
+        tk.Label(config_frame, text='SSL: ').grid(row=4, column=0, sticky='w')
+        ssl_check = tk.Checkbutton(config_frame).grid(row=4, column=1, sticky='w')
+        tk.Label(config_frame, text='From address: ').grid(row=5, column=0, sticky='w')
+        from_adr_entry = tk.Entry(config_frame).grid(row=5, column=1, sticky='w')
+
+        action_frame = tk.Frame(server_set_frame)
+        action_frame.grid(sticky='e')
+        ok_button = tk.Button(action_frame, text="Ok", command='', width=10).grid(row=0, column=0)
+        cancel_button = tk.Button(action_frame, text="Cancel", command='', width=10).grid(row=0, column=1)
 
     def server_set_save(self):
         pass
@@ -142,13 +181,14 @@ class Application(tk.Frame):
     def server_delete(self):
         pass
 
-    def con_servers(self):
+    def connect_servers(self):
         self.server_conn_list = []
-        server_label_list = [label for label in self.config_ini.sections() if 'smtp' in label.lower()]
-        for server_label in server_label_list:
-            connect = self.connect_mail_server(server_label)
-            if connect:
-                self.server_conn_list.append((connect, server_label))
+        if self.config_ini:
+            server_label_list = [label for label in self.config_ini.sections() if 'smtp' in label.lower()]
+            for server_label in server_label_list:
+                connect = self.connect_mail_server(server_label)
+                if connect:
+                    self.server_conn_list.append((connect, server_label))
 
     def connect_mail_server(self, server_label):
         server_name = self.config_ini[server_label]['server_name']
@@ -170,6 +210,11 @@ class Application(tk.Frame):
         else:
             print('Connected')
             return mail_server
+
+    def disconnect_servers(self):
+        for server, name in self.server_conn_list:
+            print('Disconnecting from mail server %s' % name)
+            server.quit()
 
     def star_sending(self):
         for counter, to_adr in enumerate(self.to_adr_list):
@@ -205,9 +250,6 @@ class Application(tk.Frame):
                 break
         else:
             print('Sending completed')
-        for server, name in self.server_conn_list:
-            print('Disconnecting from mail server %s' % name)
-            server.quit()
 
     def get_message(self, from_, to):
         self.msg['From'] = from_
