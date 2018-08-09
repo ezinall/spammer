@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import tkinter as tk
+from tkinter import ttk
 from tkinter import filedialog
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -11,6 +12,7 @@ import string
 import re
 import smtplib
 from time import sleep
+import uuid
 
 
 class Application(tk.Frame):
@@ -20,14 +22,25 @@ class Application(tk.Frame):
         # self.master.geometry('1024x768')
 
         self.config_ini = None
-        self.msg_subj = None
+        self.from_str = tk.StringVar()
+        self.msg_subj = tk.StringVar()
         self.msg = MIMEMultipart()
         self.msg_text = None
-        self.msg_subj_entry = None
+
+        self.server_name = tk.StringVar()
+        self.server_port = tk.StringVar()
+        self.user_name = tk.StringVar()
+        self.user_password = tk.StringVar()
+        self.ssl = tk.IntVar()
+        self.from_adr = tk.StringVar()
 
         self.server_conn_list = []
         self.to_adr_list = []
         self.black_list = []
+
+        self.servers_set_win = None
+        self.server_add_win = None
+        self.server_edit_win = None
 
         self.conf_identify()
         self.main_ui()
@@ -36,8 +49,8 @@ class Application(tk.Frame):
         try:
             open('config.ini').read()
         except FileNotFoundError:
-            pass
-        else:
+            open('config.ini', 'w')
+        finally:
             self.config_ini = configparser.ConfigParser()
             self.config_ini.read('config.ini')
 
@@ -61,32 +74,44 @@ class Application(tk.Frame):
 
         tk.Label(frame_mail, text='From: ').grid(row=1, column=0, sticky='w')
         if self.config_ini:
-            from_str = '; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label)
+            self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
         else:
-            from_str = ''
-        tk.Label(frame_mail, text=from_str).grid(row=1, column=1, sticky='w')
+            self.from_str.set('')
+        tk.Label(frame_mail, textvariable=self.from_str).grid(row=1, column=1, sticky='w')
 
         tk.Label(frame_mail, text='Subject: ').grid(row=2, column=0, sticky='w')
-        subject = tk.StringVar()
-        subject.set(self.msg_subj if self.msg_subj else 'Subject')
-        self.msg_subj_entry = tk.Entry(frame_mail, textvariable=subject, width=75)
-        self.msg_subj_entry.grid(row=2, column=1, sticky='w')
+        try:
+            self.msg_subj.set(self.config_ini['config']['msg_subj'])
+        except (KeyError, TypeError):
+            self.msg_subj.set('Message subject')
+        tk.Entry(frame_mail, textvariable=self.msg_subj, width=75).grid(row=2, column=1, sticky='w')
         tk.Button(frame_mail, text="Save", command=self.msg_subj_save, width=10).grid(row=2, column=2, sticky='w')
 
         tk.Label(frame_mail, text='Mail: ').grid(row=3, column=0, sticky='w')
         tk.Button(frame_mail, text="Open", command=self.msg_open, width=10).grid(row=3, column=1, sticky='w')
 
+        ttk.Separator(frame_mail).grid(row=4, column=0, sticky="ew", columnspan=3)
+
         action_frame = tk.Frame(self.master)
         action_frame.grid(sticky='w')
 
-        tk.Button(action_frame, text="Connect", command=self.connect_servers, width=10).grid(row=4, column=0, sticky='w')
-        tk.Button(action_frame, text="Disconnect", command=self.disconnect_servers, width=10).grid(row=4, column=1, sticky='w')
+        tk.Button(action_frame, text="Connect", command=self.connect_servers, width=10).grid(row=0, column=0, sticky='w')
+        tk.Button(action_frame, text="Disconnect", command=self.disconnect_servers, width=10).grid(row=0, column=1, sticky='w')
 
-        tk.Button(action_frame, text="Start", command=self.star_sending, width=10).grid(row=5, column=0, sticky='w')
-        tk.Button(action_frame, text="Stop", command='', width=10).grid(row=5, column=1, sticky='w')
+        tk.Button(action_frame, text="Start", command=self.star_sending, width=10).grid(row=1, column=0, sticky='w')
+        tk.Button(action_frame, text="Stop", command='', width=10).grid(row=1, column=1, sticky='w')
+
+        # send_progress = ttk.Progressbar(action_frame, mode='determinate', value=10).grid(row=2, column=0)
 
     def msg_subj_save(self):
-        self.msg_subj = self.msg_subj_entry.get()
+        try:
+            self.config_ini.add_section('config')
+        except configparser.DuplicateSectionError:
+            pass
+        finally:
+            self.config_ini.set('config', 'msg_subj', self.msg_subj.get())
+        with open('config.ini', 'w') as config_ini:
+            self.config_ini.write(config_ini)
 
     def to_adr_list_open(self):
         dlg = filedialog.Open(self, filetypes=[('CSV files', '*.csv'), ('All files', '*')])
@@ -103,11 +128,12 @@ class Application(tk.Frame):
                 self.msg_text = f.read()
 
     def servers_set_ui(self):
-        servers_set_frame = tk.Toplevel(self.master)
+        self.servers_set_win = tk.Toplevel(self.master)
         # servers_set_win.geometry('640x480')
-        servers_set_frame.title('Servers settings')
+        self.servers_set_win.title('Servers settings')
+        self.servers_set_win.grab_set()
 
-        servers_frame = tk.Frame(servers_set_frame)
+        servers_frame = tk.Frame(self.servers_set_win)
         servers_frame.grid()
 
         if self.config_ini:
@@ -116,74 +142,125 @@ class Application(tk.Frame):
                 tk.Label(servers_frame, text=str(count+1)+'.').grid(row=count, column=0, sticky='w')
                 tk.Label(servers_frame, text=self.config_ini[server_label]['server_name']).grid(row=count, column=1, sticky='w')
                 tk.Button(servers_frame, text='Edit', command=lambda label=server_label: self.server_edit_ui(label), width=10).grid(row=count, column=2, sticky='w')
-                tk.Button(servers_frame, text='Delete', command=self.server_delete, width=10).grid(row=count, column=3, sticky='w')
+                tk.Button(servers_frame, text='Delete', command=lambda label=server_label: self.server_delete(label), width=10).grid(row=count, column=3, sticky='w')
 
-        add_server_frame = tk.Frame(servers_set_frame)
+        add_server_frame = tk.Frame(self.servers_set_win)
         add_server_frame.grid(sticky='w')
 
         tk.Button(add_server_frame, text='Add', command=self.server_add_ui, width=10).grid(sticky='w')
 
-        action_frame = tk.Frame(servers_set_frame)
+        action_frame = tk.Frame(self.servers_set_win)
         action_frame.grid(sticky='e')
 
         tk.Button(action_frame, text="Save", command='', width=10).grid(row=0, column=0)
-        tk.Button(action_frame, text="Cancel", command=lambda: servers_set_frame.destroy(), width=10).grid(row=0, column=1)
+        tk.Button(action_frame, text="Cancel", command=lambda: self.servers_set_win.destroy(), width=10).grid(row=0, column=1)
 
     def servers_set_save(self):
         pass
 
-    def servers_set_cancel(self):
-        pass
-
     def server_add_ui(self):
-        pass
+        self.server_add_win = tk.Toplevel(self.master)
+        self.server_add_win.title('Server add')
+        self.server_add_win.grab_set()
 
-    def server_edit_ui(self, server_label):
-        server_edit_frame = tk.Toplevel(self.master)
-        server_edit_frame.title('Server configure')
-
-        config_frame = tk.Frame(server_edit_frame)
+        config_frame = tk.Frame(self.server_add_win)
         config_frame.grid()
 
-        server_name = tk.StringVar()
-        server_name.set(self.config_ini[server_label]['server_name'])
-        server_port = tk.StringVar()
-        server_port.set(self.config_ini[server_label]['server_port'])
-        user_name = tk.StringVar()
-        user_name.set(self.config_ini[server_label]['user_name'])
-        user_password = tk.StringVar()
-        user_password.set(self.config_ini[server_label]['user_password'])
-        ssl = tk.IntVar()
-        ssl.set(int(self.config_ini[server_label]['ssl']))
-        from_adr = tk.StringVar()
-        from_adr.set(self.config_ini[server_label]['from_adr'])
+        self.server_name.set('')
+        self.server_port.set('')
+        self.user_name.set('')
+        self.user_password.set('')
+        self.ssl.set(0)
+        self.from_adr.set('')
 
         tk.Label(config_frame, text='Server name: ').grid(row=0, column=0, sticky='w')
-        tk.Entry(config_frame, textvariable=server_name).grid(row=0, column=1, sticky='w')
+        tk.Entry(config_frame, textvariable=self.server_name).grid(row=0, column=1, sticky='w')
         tk.Label(config_frame, text='Server port: ').grid(row=1, column=0, sticky='w')
-        tk.Entry(config_frame, textvariable=server_port).grid(row=1, column=1, sticky='w')
+        tk.Entry(config_frame, textvariable=self.server_port).grid(row=1, column=1, sticky='w')
         tk.Label(config_frame, text='User name: ').grid(row=2, column=0, sticky='w')
-        tk.Entry(config_frame, textvariable=user_name).grid(row=2, column=1, sticky='w')
+        tk.Entry(config_frame, textvariable=self.user_name).grid(row=2, column=1, sticky='w')
         tk.Label(config_frame, text='User password: ').grid(row=3, column=0, sticky='w')
-        tk.Entry(config_frame, textvariable=user_password, show='*').grid(row=3, column=1, sticky='w')
+        tk.Entry(config_frame, textvariable=self.user_password, show='*').grid(row=3, column=1, sticky='w')
         tk.Label(config_frame, text='SSL: ').grid(row=4, column=0, sticky='w')
-        tk.Checkbutton(config_frame, variable=ssl).grid(row=4, column=1, sticky='w')
+        tk.Checkbutton(config_frame, variable=self.ssl).grid(row=4, column=1, sticky='w')
         tk.Label(config_frame, text='From address: ').grid(row=5, column=0, sticky='w')
-        tk.Entry(config_frame, textvariable=from_adr).grid(row=5, column=1, sticky='w')
+        tk.Entry(config_frame, textvariable=self.from_adr).grid(row=5, column=1, sticky='w')
 
-        action_frame = tk.Frame(server_edit_frame)
+        action_frame = tk.Frame(self.server_add_win)
         action_frame.grid(sticky='e')
-        tk.Button(action_frame, text="Ok", command='', width=10).grid(row=0, column=0)
-        tk.Button(action_frame, text="Cancel", command=lambda: server_edit_frame.destroy(), width=10).grid(row=0, column=1)
+        tk.Button(action_frame, text="Save", command=lambda: self.server_add_save(), width=10).grid(row=0, column=0)
+        tk.Button(action_frame, text="Cancel", command=lambda: self.server_add_win.destroy(), width=10).grid(row=0, column=1)
 
-    def server_edit_save(self):
-        pass
+    def server_add_save(self):
+        server_label = 'smtp-'+uuid.uuid4().hex[:5]
+        self.config_ini.add_section(server_label)
+        self.config_ini.set(server_label, 'server_name', self.server_name.get())
+        self.config_ini.set(server_label, 'server_port', self.server_port.get())
+        self.config_ini.set(server_label, 'user_name', self.user_name.get())
+        self.config_ini.set(server_label, 'user_password', self.user_password.get())
+        self.config_ini.set(server_label, 'ssl', str(self.ssl.get()))
+        self.config_ini.set(server_label, 'from_adr', self.from_adr.get())
+        with open('config.ini', 'w') as config_ini:
+            self.config_ini.write(config_ini)
+        self.server_add_win.destroy()
+        self.servers_set_win.destroy()
+        self.servers_set_ui()
+        self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
 
-    def server_edit_cancel(self):
-        pass
+    def server_edit_ui(self, server_label):
+        self.server_edit_win = tk.Toplevel(self.master)
+        self.server_edit_win.title('Server configure')
+        self.server_edit_win.grab_set()
 
-    def server_delete(self):
-        pass
+        config_frame = tk.Frame(self.server_edit_win)
+        config_frame.grid()
+
+        self.server_name.set(self.config_ini[server_label]['server_name'])
+        self.server_port.set(self.config_ini[server_label]['server_port'])
+        self.user_name.set(self.config_ini[server_label]['user_name'])
+        self.user_password.set(self.config_ini[server_label]['user_password'])
+        self.ssl.set(int(self.config_ini[server_label]['ssl']))
+        self.from_adr.set(self.config_ini[server_label]['from_adr'])
+
+        tk.Label(config_frame, text='Server name: ').grid(row=0, column=0, sticky='w')
+        tk.Entry(config_frame, textvariable=self.server_name).grid(row=0, column=1, sticky='w')
+        tk.Label(config_frame, text='Server port: ').grid(row=1, column=0, sticky='w')
+        tk.Entry(config_frame, textvariable=self.server_port).grid(row=1, column=1, sticky='w')
+        tk.Label(config_frame, text='User name: ').grid(row=2, column=0, sticky='w')
+        tk.Entry(config_frame, textvariable=self.user_name).grid(row=2, column=1, sticky='w')
+        tk.Label(config_frame, text='User password: ').grid(row=3, column=0, sticky='w')
+        tk.Entry(config_frame, textvariable=self.user_password, show='*').grid(row=3, column=1, sticky='w')
+        tk.Label(config_frame, text='SSL: ').grid(row=4, column=0, sticky='w')
+        tk.Checkbutton(config_frame, variable=self.ssl).grid(row=4, column=1, sticky='w')
+        tk.Label(config_frame, text='From address: ').grid(row=5, column=0, sticky='w')
+        tk.Entry(config_frame, textvariable=self.from_adr).grid(row=5, column=1, sticky='w')
+
+        action_frame = tk.Frame(self.server_edit_win)
+        action_frame.grid(sticky='e')
+        tk.Button(action_frame, text="Save", command=lambda label=server_label: self.server_edit_save(label), width=10).grid(row=0, column=0)
+        tk.Button(action_frame, text="Cancel", command=lambda: self.server_edit_win.destroy(), width=10).grid(row=0, column=1)
+
+    def server_edit_save(self, server_label):
+        self.config_ini.set(server_label, 'server_name', self.server_name.get())
+        self.config_ini.set(server_label, 'server_port', self.server_port.get())
+        self.config_ini.set(server_label, 'user_name', self.user_name.get())
+        self.config_ini.set(server_label, 'user_password', self.user_password.get())
+        self.config_ini.set(server_label, 'ssl', str(self.ssl.get()))
+        self.config_ini.set(server_label, 'from_adr', self.from_adr.get())
+        with open('config.ini', 'w') as config_ini:
+            self.config_ini.write(config_ini)
+        self.server_edit_win.destroy()
+        self.servers_set_win.destroy()
+        self.servers_set_ui()
+        self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
+
+    def server_delete(self, server_label):
+        self.config_ini.remove_section(server_label)
+        with open('config.ini', 'w') as config_ini:
+            self.config_ini.write(config_ini)
+        self.servers_set_win.destroy()
+        self.servers_set_ui()
+        self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
 
     def connect_servers(self):
         self.server_conn_list = []
@@ -217,7 +294,7 @@ class Application(tk.Frame):
 
     def disconnect_servers(self):
         for server, name in self.server_conn_list:
-            print('Disconnecting from mail server %s' % name)
+            print('Disconnecting from mail server %s' % self.config_ini[name]['server_name'])
             server.quit()
 
     def star_sending(self):
@@ -259,7 +336,7 @@ class Application(tk.Frame):
         self.msg['From'] = from_
         self.msg['To'] = to
         self.msg['Subject'] = self.msg_subj
-        self.msg.attach(MIMEText(self.msg_text, 'html', 'utf-8'))
+        self.msg.attach(MIMEText(self.msg_text.get(), 'html', 'utf-8'))
 
 
 root = tk.Tk()
