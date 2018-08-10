@@ -166,3 +166,9 @@ fabric.properties
 # Editor-based Rest Client
 .idea/httpRequests
 
+/config.ini
+.idea/misc.xml
+.idea/modules.xml
+.idea/spamer.iml
+.idea/vcs.xml
+text.html
