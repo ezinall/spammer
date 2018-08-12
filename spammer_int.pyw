@@ -38,6 +38,7 @@ class Application(tk.Frame):
 
         self.server_conn_list = []
         self.to_adr_list = []
+        self.to_adr_num = 0
         self.black_list = []
 
         self.servers_set_win = None
@@ -48,6 +49,8 @@ class Application(tk.Frame):
         self.but_server_del = None
 
         self.current_server = None
+
+        self.stop = False
 
         self.conf_identify()
         self.main_ui()
@@ -97,10 +100,11 @@ class Application(tk.Frame):
         frame_action.grid(row=2, column=0, sticky='w', padx=5)
         tk.Button(frame_action, text="Connect", command=self.connect_servers, width=10).grid(row=0, column=0, sticky='w')
         tk.Button(frame_action, text="Disconnect", command=self.disconnect_servers, width=10).grid(row=0, column=1, sticky='w', padx=5)
-        tk.Button(frame_action, text="Start", command='', width=10).grid(row=1, column=0, sticky='w')
-        tk.Button(frame_action, text="Stop", command='', width=10).grid(row=1, column=1, sticky='w', padx=5)
+        tk.Button(frame_action, text="Start", command=lambda: self.star_sending(), width=10).grid(row=1, column=0, sticky='w')
+        tk.Button(frame_action, text="Stop", command=lambda: self.stop_sending(), width=10).grid(row=1, column=1, sticky='w', padx=5)
 
-        self.progress_send = ttk.Progressbar(self.master, mode='determinate', value=10).grid(row=3, column=0, columnspan=1, sticky="ew", padx=5, pady=5)
+        self.progress_send = ttk.Progressbar(self.master, mode='determinate')
+        self.progress_send.grid(row=3, column=0, columnspan=1, sticky="ew", padx=5, pady=5)
 
     def msg_subj_save(self):
         try:
@@ -118,6 +122,7 @@ class Application(tk.Frame):
         if to_file:
             with open(to_file, 'r') as f:
                 self.to_adr_list = [r[0] for r in csv.reader(f) if r]
+                self.progress_send['maximum'] = len(self.to_adr_list)
 
     def msg_open(self):
         dlg = filedialog.Open(self, filetypes=[('HTML files', '*.html'), ('All files', '*')])
@@ -259,40 +264,53 @@ class Application(tk.Frame):
             print('Disconnecting from mail server %s' % self.config_ini[name]['server_adr'])
             server.quit()
 
+    def stop_sending(self):
+        self.stop = True
+
     def star_sending(self):
-        for counter, to_adr in enumerate(self.to_adr_list):
-            to_adr_ascii = ''.join(i for i in to_adr if i in string.ascii_letters + string.digits + '@._-')
-            if not re.search(r'(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6})', to_adr_ascii):
-                print(counter, "Message DON'T send to %s. Incorrect format!" % to_adr)
+        if self.stop:
+            self.stop = False
+            return
+        if not self.server_conn_list:
+            print('No servers to send')
+            return
+        if self.to_adr_num + 1 > len(self.to_adr_list):
+            return
+        to_adr = self.to_adr_list[self.to_adr_num]
+        to_adr_ascii = ''.join(i for i in to_adr if i in string.ascii_letters + string.digits + '@._-')
+        if not re.search(r'(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6})', to_adr_ascii):
+            # print(counter, "Message DON'T send to %s. Incorrect format!" % to_adr)
+            self.to_adr_num += 1
+            self.master.after(10, lambda: self.star_sending())
+            return
+        elif to_adr_ascii in self.black_list:
+            # print(counter, "Message DON'T send. %s in black list!" % to_adr)
+            self.to_adr_num += 1
+            self.master.after(10, lambda: self.star_sending())
+            return
+        for server, name in self.server_conn_list:
+            server.helo()
+            self.get_message(self.config_ini[name]['from_adr'], to_adr_ascii)
+            try:
+                server.sendmail(self.config_ini[name]['from_adr'], to_adr_ascii, self.msg.as_string())
+            except smtplib.SMTPServerDisconnected as exc:
+                # print('Server %s disconnected' % name)
+                # print('%s: %s' % (exc.__class__.__name__, exc))
+                self.server_conn_list.remove((server, name))
                 continue
-            elif to_adr_ascii in self.black_list:
-                print(counter, "Message DON'T send. %s in black list!" % to_adr)
-                continue
-            for server, name in self.server_conn_list:
-                server.helo()
-                self.get_message(self.config_ini[name]['from_adr'], to_adr_ascii)
-                try:
-                    server.sendmail(self.config_ini[name]['from_adr'], to_adr_ascii, self.msg.as_string())
-                except smtplib.SMTPServerDisconnected as exc:
-                    print('Server %s disconnected' % name)
-                    print('%s: %s' % (exc.__class__.__name__, exc))
-                    self.server_conn_list.remove((server, name))
-                    continue
-                except Exception as exc:
-                    print(counter, "Message DON'T send to", to_adr)
-                    print('%s: %s' % (exc.__class__.__name__, exc))
-                    break
-                else:
-                    self.server_conn_list.remove((server, name))
-                    self.server_conn_list.append((server, name))
-                    print(counter, 'Message send to', to_adr_ascii)
-                    sleep(13 / len(self.server_conn_list) if len(self.server_conn_list) else 13)
-                    break
+            except Exception as exc:
+                # print(counter, "Message DON'T send to", to_adr)
+                # print('%s: %s' % (exc.__class__.__name__, exc))
+                return
             else:
-                print('No servers to send')
+                self.server_conn_list.remove((server, name))
+                self.server_conn_list.append((server, name))
+                # print(counter, 'Message send to', to_adr_ascii)
+                # sleep(13 / len(self.server_conn_list) if len(self.server_conn_list) else 13)
+                self.to_adr_num += 1
+                self.progress_send['value'] = self.to_adr_num
+                self.master.after(10, lambda: self.star_sending())
                 break
-        else:
-            print('Sending completed')
 
     def get_message(self, from_, to):
         self.msg['From'] = from_
