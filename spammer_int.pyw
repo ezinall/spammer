@@ -47,6 +47,8 @@ class Application(tk.Frame):
         self.progress_send = None
         self.but_server_del = None
 
+        self.current_server = None
+
         self.conf_identify()
         self.main_ui()
 
@@ -95,7 +97,7 @@ class Application(tk.Frame):
         frame_action.grid(row=2, column=0, sticky='w', padx=5)
         tk.Button(frame_action, text="Connect", command=self.connect_servers, width=10).grid(row=0, column=0, sticky='w')
         tk.Button(frame_action, text="Disconnect", command=self.disconnect_servers, width=10).grid(row=0, column=1, sticky='w', padx=5)
-        tk.Button(frame_action, text="Start", command=self.star_sending, width=10).grid(row=1, column=0, sticky='w')
+        tk.Button(frame_action, text="Start", command='', width=10).grid(row=1, column=0, sticky='w')
         tk.Button(frame_action, text="Stop", command='', width=10).grid(row=1, column=1, sticky='w', padx=5)
 
         self.progress_send = ttk.Progressbar(self.master, mode='determinate', value=10).grid(row=3, column=0, columnspan=1, sticky="ew", padx=5, pady=5)
@@ -132,11 +134,14 @@ class Application(tk.Frame):
 
         frame_servers = tk.Frame(self.servers_set_win)
         frame_servers.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
-
         tk.Label(frame_servers, text='Server').grid(row=0, column=0)
         select_box = tk.StringVar()
         combo_servers = ttk.Combobox(frame_servers, textvariable=select_box, values=[label for label in self.config_ini.sections() if 'smtp' in label])
-        combo_servers.current(0) if [label for label in self.config_ini.sections() if 'smtp' in label] else None
+        if self.current_server:
+            combo_servers.current([label for label in self.config_ini.sections() if 'smtp' in label].index(self.current_server))
+            self.current_server = None
+        else:
+            combo_servers.current(0) if [label for label in self.config_ini.sections() if 'smtp' in label] else None
         combo_servers.grid(row=0, column=1, padx=5)
         combo_servers.bind('<<ComboboxSelected>>', lambda _: self.server_edit(select_box.get()))
         but_new = tk.Button(frame_servers, text='New', command=lambda: self.server_new(), width=7)
@@ -204,19 +209,20 @@ class Application(tk.Frame):
         self.config_ini.set(self.server_label.get(), 'from_adr', self.from_adr.get())
         with open('config.ini', 'w') as config_ini:
             self.config_ini.write(config_ini)
-        self.servers_set_win.destroy()
-        self.servers_set_ui()
         self.from_str.set(
             '; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
+        self.current_server = self.server_label.get()
+        self.servers_set_win.destroy()
+        self.servers_set_ui()
 
     def server_delete(self):
         if messagebox.askokcancel(self.config_ini[self.server_label.get()]['server_adr'], 'Would you like to delete %s?' % self.config_ini[self.server_label.get()]['server_adr']):
             self.config_ini.remove_section(self.server_label.get())
             with open('config.ini', 'w') as config_ini:
                 self.config_ini.write(config_ini)
+            self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
             self.servers_set_win.destroy()
             self.servers_set_ui()
-            self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
 
     def connect_servers(self):
         self.server_conn_list = []
