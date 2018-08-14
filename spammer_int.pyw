@@ -42,11 +42,11 @@ class Application(tk.Frame):
         self.black_list = []
 
         self.servers_set_win = None
-        self.server_add_win = None
-        self.server_edit_win = None
+        self.black_list_win = None
 
         self.progress_send = None
         self.but_server_del = None
+        self.black_list_box = None
 
         self.current_server = None
 
@@ -64,6 +64,12 @@ class Application(tk.Frame):
             self.config_ini = configparser.ConfigParser()
             self.config_ini.read('config.ini')
 
+        try:
+            with open('black_list.txt', 'r') as black_list:
+                self.black_list = black_list.read().splitlines()
+        except FileNotFoundError:
+            pass
+
     def main_ui(self):
         menu_bar = tk.Menu(self)
         self.master.config(menu=menu_bar)
@@ -72,6 +78,7 @@ class Application(tk.Frame):
         menu_bar.add_cascade(label="File", menu=file_menu)
         settings_menu = tk.Menu(menu_bar, tearoff=0)
         settings_menu.add_command(label='Servers', command=self.servers_set_ui)
+        settings_menu.add_command(label='Black list', command=self.black_list_ui)
         menu_bar.add_cascade(label='Settings', menu=settings_menu)
 
         frame_mail = tk.Frame(self.master)
@@ -228,6 +235,39 @@ class Application(tk.Frame):
             self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
             self.servers_set_win.destroy()
             self.servers_set_ui()
+
+    def black_list_ui(self):
+        self.black_list_win = tk.Toplevel(self.master)
+        self.black_list_win.geometry('+%s+%s' % (self.master.winfo_x() + 20, self.master.winfo_y() + 20))
+        self.black_list_win.title('Black list')
+        self.black_list_win.grab_set()
+
+        frame_list = tk.Frame(self.black_list_win)
+        frame_list.grid(row=0, column=0, sticky='w', padx=5, pady=5)
+        self.black_list_box = tk.Listbox(frame_list, selectmode='extended', width=40)
+        self.black_list_box.grid(row=0, column=0)
+        [self.black_list_box.insert(i, adr) for i, adr in enumerate(self.black_list)]
+        scroll = tk.Scrollbar(frame_list, command=self.black_list_box.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        self.black_list_box.config(yscrollcommand=scroll.set)
+
+        frame_edit = tk.Frame(self.black_list_win)
+        frame_edit.grid(row=0, column=1, sticky='n', padx=5, pady=5)
+        tk.Button(frame_edit, text='Add', command='', width=7).grid(row=0, column=0)
+        tk.Button(frame_edit, text='Delete', command=lambda: self.black_list_box.delete(self.black_list_box.curselection()[0]), width=7).grid(row=1, column=0, pady=5)
+
+        frame_action = tk.Frame(self.black_list_win)
+        frame_action.grid(row=1, column=0, sticky='e', columnspan=2, padx=5, pady=5)
+        tk.Button(frame_action, text="Save", command=lambda: self.black_list_save(), width=10).grid(row=0, column=0, padx=5)
+        tk.Button(frame_action, text="Cancel", command=lambda: self.black_list_win.destroy(), width=10).grid(row=0, column=1)
+
+    def black_list_save(self):
+        self.black_list = [adr for adr in self.black_list_box.get(0, 'end')]
+        with open('black_list.txt', 'w') as black_list:
+            for i in self.black_list_box.get(0, 'end'):
+                black_list.write("%s\n" % i)
+        self.black_list_win.destroy()
+        self.black_list_ui()
 
     def connect_servers(self):
         self.server_conn_list = []
