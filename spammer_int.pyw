@@ -14,6 +14,7 @@ import re
 import smtplib
 from time import sleep
 import uuid
+from tkinter import simpledialog
 
 
 class Application(tk.Frame):
@@ -66,7 +67,7 @@ class Application(tk.Frame):
 
         try:
             with open('black_list.txt', 'r') as black_list:
-                self.black_list = black_list.read().splitlines()
+                self.black_list = [adr for adr in black_list.read().splitlines() if adr]
         except FileNotFoundError:
             pass
 
@@ -246,20 +247,39 @@ class Application(tk.Frame):
         frame_list.grid(row=0, column=0, sticky='w', padx=5, pady=5)
         self.black_list_box = tk.Listbox(frame_list, selectmode='extended', width=40)
         self.black_list_box.grid(row=0, column=0)
-        [self.black_list_box.insert(i, adr) for i, adr in enumerate(self.black_list)]
+        for adr in self.black_list:
+            self.black_list_box.insert('end', adr)
         scroll = tk.Scrollbar(frame_list, command=self.black_list_box.yview)
         scroll.grid(row=0, column=1, sticky='ns')
         self.black_list_box.config(yscrollcommand=scroll.set)
 
         frame_edit = tk.Frame(self.black_list_win)
         frame_edit.grid(row=0, column=1, sticky='n', padx=5, pady=5)
-        tk.Button(frame_edit, text='Add', command='', width=7).grid(row=0, column=0)
-        tk.Button(frame_edit, text='Delete', command=lambda: self.black_list_box.delete(self.black_list_box.curselection()[0]), width=7).grid(row=1, column=0, pady=5)
+        tk.Button(frame_edit, text='Add', command=lambda: self.black_list_add(), width=7).grid(row=0, column=0)
+        but_del_adr = tk.Button(frame_edit, text='Delete', state='disable', command=lambda: self.black_list_delete(), width=7)
+        but_del_adr.grid(row=1, column=0, pady=5)
+
+        self.black_list_box.bind('<<ListboxSelect>>', lambda _: but_del_adr.config(state='active') if self.black_list_box.curselection() else None)
 
         frame_action = tk.Frame(self.black_list_win)
         frame_action.grid(row=1, column=0, sticky='e', columnspan=2, padx=5, pady=5)
         tk.Button(frame_action, text="Save", command=lambda: self.black_list_save(), width=10).grid(row=0, column=0, padx=5)
         tk.Button(frame_action, text="Cancel", command=lambda: self.black_list_win.destroy(), width=10).grid(row=0, column=1)
+
+    def black_list_add(self):
+        answer = simpledialog.askstring('Black address', 'Please enter email.', parent=self.black_list_win)
+        if answer:
+            self.black_list_box.insert('end', answer)
+
+    def black_list_delete(self):
+        selected_adr = [self.black_list_box.get(i) for i in self.black_list_box.curselection()]
+        if messagebox.askokcancel('Delete address', 'Would you like to delete %s?' % ', '.join(selected_adr)):
+            for i in reversed(self.black_list_box.curselection()):
+                self.black_list_box.delete(i)
+            self.black_list = [adr for adr in self.black_list_box.get(0, 'end')]
+            with open('black_list.txt', 'w') as black_list:
+                for i in self.black_list_box.get(0, 'end'):
+                    black_list.write("%s\n" % i)
 
     def black_list_save(self):
         self.black_list = [adr for adr in self.black_list_box.get(0, 'end')]
