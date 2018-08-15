@@ -47,9 +47,8 @@ class Application(tk.Frame):
 
         self.progress_send = None
         self.but_server_del = None
-        self.black_list_box = None
-
-        self.current_server = None
+        self.combo_servers = None
+        self.box_black_list = None
 
         self.stop = False
 
@@ -148,25 +147,15 @@ class Application(tk.Frame):
         frame_servers = tk.Frame(self.servers_set_win)
         frame_servers.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
         tk.Label(frame_servers, text='Server').grid(row=0, column=0)
-        select_box = tk.StringVar()
-        combo_servers = ttk.Combobox(frame_servers, textvariable=select_box, values=[label for label in self.config_ini.sections() if 'smtp' in label])
-        if self.current_server:
-            combo_servers.current([label for label in self.config_ini.sections() if 'smtp' in label].index(self.current_server))
-            self.current_server = None
-        else:
-            combo_servers.current(0) if [label for label in self.config_ini.sections() if 'smtp' in label] else None
-        combo_servers.grid(row=0, column=1, padx=5)
-        combo_servers.bind('<<ComboboxSelected>>', lambda _: self.server_edit(select_box.get()))
-        but_new = tk.Button(frame_servers, text='New', command=lambda: self.server_new(), width=7)
-        but_new.grid(row=0, column=2, sticky='w')
-        but_new.bind('<Button-1>', lambda _: combo_servers.set(''))
+        self.combo_servers = ttk.Combobox(frame_servers, values=[label for label in self.config_ini.sections() if 'smtp' in label])
+        self.combo_servers.grid(row=0, column=1, padx=5)
+        self.combo_servers.current(0) if [label for label in self.config_ini.sections() if 'smtp' in label] else None
+        self.combo_servers.bind('<<ComboboxSelected>>', lambda _: self.server_edit(self.combo_servers.get()))
+        tk.Button(frame_servers, text='New', command=lambda: self.server_edit(), width=7).grid(row=0, column=2, sticky='w')
         self.but_server_del = tk.Button(frame_servers, text='Del', command=lambda: self.server_delete(), width=7)
         self.but_server_del.grid(row=0, column=3, sticky='w', padx=5)
 
-        if combo_servers.current() != -1:
-            self.server_edit(select_box.get())
-        else:
-            self.server_new()
+        self.server_edit(self.combo_servers.get() if self.combo_servers.current() != -1 else None)
 
         frame_server = tk.LabelFrame(self.servers_set_win, text='Server')
         frame_server.grid(row=1, column=0, sticky='w', padx=5, ipadx=2, ipady=2)
@@ -191,25 +180,26 @@ class Application(tk.Frame):
         tk.Button(frame_action, text="Save", command=lambda: self.servers_set_save(), width=10).grid(row=0, column=0, padx=5)
         tk.Button(frame_action, text="Cancel", command=lambda: self.servers_set_win.destroy(), width=10).grid(row=0, column=1)
 
-    def server_new(self):
-        self.but_server_del['state'] = 'disabled'
-        self.server_label.set('smtp-' + uuid.uuid4().hex[:5])
-        self.server_name.set('')
-        self.server_port.set('')
-        self.user_name.set('')
-        self.user_password.set('')
-        self.ssl.set(0)
-        self.from_adr.set('')
+    def server_edit(self, server_label=None):
+        self.combo_servers.set(server_label if server_label else '')
+        self.but_server_del['state'] = 'active' if server_label else 'disable'
+        self.server_label.set(server_label if server_label else 'smtp-' + uuid.uuid4().hex[:5])
+        self.server_name.set(self.config_ini[server_label]['server_adr'] if server_label else '')
+        self.server_port.set(self.config_ini[server_label]['server_port'] if server_label else '')
+        self.user_name.set(self.config_ini[server_label]['user_name'] if server_label else '')
+        self.user_password.set(self.config_ini[server_label]['user_password'] if server_label else '')
+        self.ssl.set(int(self.config_ini[server_label]['ssl']) if server_label else 0)
+        self.from_adr.set(self.config_ini[server_label]['from_adr'] if server_label else '')
 
-    def server_edit(self, server_label):
-        self.but_server_del['state'] = 'active'
-        self.server_label.set(server_label)
-        self.server_name.set(self.config_ini[server_label]['server_adr'])
-        self.server_port.set(self.config_ini[server_label]['server_port'])
-        self.user_name.set(self.config_ini[server_label]['user_name'])
-        self.user_password.set(self.config_ini[server_label]['user_password'])
-        self.ssl.set(int(self.config_ini[server_label]['ssl']))
-        self.from_adr.set(self.config_ini[server_label]['from_adr'])
+    def server_delete(self):
+        if messagebox.askokcancel(self.config_ini[self.server_label.get()]['server_adr'], 'Would you like to delete %s?' % self.config_ini[self.server_label.get()]['server_adr']):
+            self.config_ini.remove_section(self.server_label.get())
+            self.combo_servers['values'] = [label for label in self.config_ini.sections() if 'smtp' in label]
+            self.combo_servers.current(0) if [label for label in self.config_ini.sections() if 'smtp' in label] else None
+            self.server_edit(self.combo_servers.get() if self.combo_servers.current() != -1 else None)
+            with open('config.ini', 'w') as config_ini:
+                self.config_ini.write(config_ini)
+            self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
 
     def servers_set_save(self):
         if self.server_label.get() not in self.config_ini.sections():
@@ -222,20 +212,9 @@ class Application(tk.Frame):
         self.config_ini.set(self.server_label.get(), 'from_adr', self.from_adr.get())
         with open('config.ini', 'w') as config_ini:
             self.config_ini.write(config_ini)
-        self.from_str.set(
-            '; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
-        self.current_server = self.server_label.get()
-        self.servers_set_win.destroy()
-        self.servers_set_ui()
-
-    def server_delete(self):
-        if messagebox.askokcancel(self.config_ini[self.server_label.get()]['server_adr'], 'Would you like to delete %s?' % self.config_ini[self.server_label.get()]['server_adr']):
-            self.config_ini.remove_section(self.server_label.get())
-            with open('config.ini', 'w') as config_ini:
-                self.config_ini.write(config_ini)
-            self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
-            self.servers_set_win.destroy()
-            self.servers_set_ui()
+        self.combo_servers['values'] = [label for label in self.config_ini.sections() if 'smtp' in label]
+        self.server_edit(self.server_label.get())
+        self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
 
     def black_list_ui(self):
         self.black_list_win = tk.Toplevel(self.master)
@@ -245,13 +224,13 @@ class Application(tk.Frame):
 
         frame_list = tk.Frame(self.black_list_win)
         frame_list.grid(row=0, column=0, sticky='w', padx=5, pady=5)
-        self.black_list_box = tk.Listbox(frame_list, selectmode='extended', width=40)
-        self.black_list_box.grid(row=0, column=0)
+        self.box_black_list = tk.Listbox(frame_list, selectmode='extended', width=40)
+        self.box_black_list.grid(row=0, column=0)
         for adr in self.black_list:
-            self.black_list_box.insert('end', adr)
-        scroll = tk.Scrollbar(frame_list, command=self.black_list_box.yview)
+            self.box_black_list.insert('end', adr)
+        scroll = tk.Scrollbar(frame_list, command=self.box_black_list.yview)
         scroll.grid(row=0, column=1, sticky='ns')
-        self.black_list_box.config(yscrollcommand=scroll.set)
+        self.box_black_list.config(yscrollcommand=scroll.set)
 
         frame_edit = tk.Frame(self.black_list_win)
         frame_edit.grid(row=0, column=1, sticky='n', padx=5, pady=5)
@@ -259,7 +238,7 @@ class Application(tk.Frame):
         but_del_adr = tk.Button(frame_edit, text='Delete', state='disable', command=lambda: self.black_list_delete(), width=7)
         but_del_adr.grid(row=1, column=0, pady=5)
 
-        self.black_list_box.bind('<<ListboxSelect>>', lambda _: but_del_adr.config(state='active') if self.black_list_box.curselection() else None)
+        self.box_black_list.bind('<<ListboxSelect>>', lambda _: but_del_adr.config(state='active') if self.box_black_list.curselection() else None)
 
         frame_action = tk.Frame(self.black_list_win)
         frame_action.grid(row=1, column=0, sticky='e', columnspan=2, padx=5, pady=5)
@@ -269,25 +248,24 @@ class Application(tk.Frame):
     def black_list_add(self):
         answer = simpledialog.askstring('Black address', 'Please enter email.', parent=self.black_list_win)
         if answer:
-            self.black_list_box.insert('end', answer)
+            self.box_black_list.insert('end', answer)
 
     def black_list_delete(self):
-        selected_adr = [self.black_list_box.get(i) for i in self.black_list_box.curselection()]
+        selected_adr = [self.box_black_list.get(i) for i in self.box_black_list.curselection()]
         if messagebox.askokcancel('Delete address', 'Would you like to delete %s?' % ', '.join(selected_adr)):
-            for i in reversed(self.black_list_box.curselection()):
-                self.black_list_box.delete(i)
-            self.black_list = [adr for adr in self.black_list_box.get(0, 'end')]
+            for i in reversed(self.box_black_list.curselection()):
+                self.box_black_list.delete(i)
+            self.black_list = [adr for adr in self.box_black_list.get(0, 'end')]
             with open('black_list.txt', 'w') as black_list:
-                for i in self.black_list_box.get(0, 'end'):
+                for i in self.box_black_list.get(0, 'end'):
                     black_list.write("%s\n" % i)
 
     def black_list_save(self):
-        self.black_list = [adr for adr in self.black_list_box.get(0, 'end')]
-        with open('black_list.txt', 'w') as black_list:
-            for i in self.black_list_box.get(0, 'end'):
-                black_list.write("%s\n" % i)
-        self.black_list_win.destroy()
-        self.black_list_ui()
+        self.black_list = [adr for adr in self.box_black_list.get(0, 'end')]
+        if self.black_list:
+            with open('black_list.txt', 'w') as black_list:
+                for i in self.box_black_list.get(0, 'end'):
+                    black_list.write("%s\n" % i)
 
     def connect_servers(self):
         self.server_conn_list = []
