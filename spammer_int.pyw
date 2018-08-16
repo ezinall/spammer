@@ -21,7 +21,6 @@ class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.master.title('JMail alpha v0.0.1')
-        # self.master.geometry('1024x768')
 
         self.config_ini = None
         self.from_str = tk.StringVar()
@@ -54,6 +53,15 @@ class Application(tk.Frame):
 
         self.conf_identify()
         self.main_ui()
+
+        self.master.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        frm_width = self.master.winfo_rootx() - self.master.winfo_x()
+        titlebar_height = self.master.winfo_rooty() - self.master.winfo_y()
+        win_width = self.master.winfo_width() + 2 * frm_width
+        win_height = self.master.winfo_height() + titlebar_height + frm_width
+        self.master.geometry('+%s+%s' % (int(screen_width/2 - win_width/2), int(screen_height/2 - win_height/2)))
 
     def conf_identify(self):
         try:
