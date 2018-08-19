@@ -48,6 +48,8 @@ class Application(tk.Frame):
         self.but_server_del = None
         self.combo_servers = None
         self.box_black_list = None
+        self.but_start = None
+        self.but_stop = None
 
         self.stop = False
 
@@ -92,7 +94,7 @@ class Application(tk.Frame):
         frame_mail = tk.Frame(self.master)
         frame_mail.grid(row=0, column=0, sticky='w', padx=5)
         tk.Label(frame_mail, text='To:', width=10, anchor='w').grid(row=0, column=0, sticky='w')
-        tk.Button(frame_mail, text="Browse...", command=self.to_adr_list_open, width=10).grid(row=0, column=1, sticky='w')
+        tk.Button(frame_mail, text="Browse...", command=self.to_adr_list_open, width=10).grid(row=0, column=1, sticky='w', padx=5)
         tk.Label(frame_mail, text='From:', width=10, anchor='w').grid(row=1, column=0, sticky='w')
         if self.config_ini:
             self.from_str.set('; '.join(self.config_ini[label]['from_adr'] for label in self.config_ini.sections() if 'smtp' in label))
@@ -104,10 +106,10 @@ class Application(tk.Frame):
             self.msg_subj.set(self.config_ini['config']['msg_subj'])
         except (KeyError, TypeError):
             self.msg_subj.set('Message subject')
-        tk.Entry(frame_mail, textvariable=self.msg_subj, width=75).grid(row=2, column=1, sticky='w')
+        tk.Entry(frame_mail, textvariable=self.msg_subj, width=75).grid(row=2, column=1, sticky='w', padx=5)
         tk.Button(frame_mail, text="Save", command=self.msg_subj_save, width=10).grid(row=2, column=2, sticky='w')
         tk.Label(frame_mail, text='Mail:', width=10, anchor='w').grid(row=3, column=0, sticky='w')
-        tk.Button(frame_mail, text="Browse...", command=self.msg_open, width=10).grid(row=3, column=1, sticky='w')
+        tk.Button(frame_mail, text="Browse...", command=self.msg_open, width=10).grid(row=3, column=1, sticky='w', padx=5)
 
         ttk.Separator(self.master).grid(row=1, column=0, columnspan=1, sticky="ew", padx=5, pady=5)
 
@@ -115,8 +117,10 @@ class Application(tk.Frame):
         frame_action.grid(row=2, column=0, sticky='w', padx=5)
         tk.Button(frame_action, text="Connect", command=self.connect_servers, width=10).grid(row=0, column=0, sticky='w')
         tk.Button(frame_action, text="Disconnect", command=self.disconnect_servers, width=10).grid(row=0, column=1, sticky='w', padx=5)
-        tk.Button(frame_action, text="Start", command=lambda: self.star_sending(), width=10).grid(row=1, column=0, sticky='w')
-        tk.Button(frame_action, text="Stop", command=lambda: self.stop_sending(), width=10).grid(row=1, column=1, sticky='w', padx=5)
+        self.but_start = tk.Button(frame_action, text="Start", command=lambda: self.star_sending(), width=10)
+        self.but_start.grid(row=1, column=0, sticky='w')
+        self.but_stop = tk.Button(frame_action, text="Stop", command=lambda: self.stop_sending(), width=10, state='disable')
+        self.but_stop.grid(row=1, column=1, sticky='w', padx=5)
 
         self.progress_send = ttk.Progressbar(self.master, mode='determinate')
         self.progress_send.grid(row=3, column=0, columnspan=1, sticky="ew", padx=5, pady=5)
@@ -312,8 +316,15 @@ class Application(tk.Frame):
 
     def stop_sending(self):
         self.stop = True
+        self.but_start['state'] = 'active'
+        self.but_stop['state'] = 'disable'
 
     def star_sending(self):
+        self.but_start['state'] = 'disable'
+        self.but_stop['state'] = 'active'
+        self.sending()
+
+    def sending(self):
         if self.stop:
             self.stop = False
             return
@@ -327,12 +338,12 @@ class Application(tk.Frame):
         if not re.search(r'(\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,6})', to_adr_ascii):
             # print(counter, "Message DON'T send to %s. Incorrect format!" % to_adr)
             self.to_adr_num += 1
-            self.master.after(10, lambda: self.star_sending())
+            self.master.after(10, lambda: self.sending())
             return
         elif to_adr_ascii in self.black_list:
             # print(counter, "Message DON'T send. %s in black list!" % to_adr)
             self.to_adr_num += 1
-            self.master.after(10, lambda: self.star_sending())
+            self.master.after(10, lambda: self.sending())
             return
         for server, name in self.server_conn_list:
             server.helo()
@@ -355,7 +366,7 @@ class Application(tk.Frame):
                 # sleep(13 / len(self.server_conn_list) if len(self.server_conn_list) else 13)
                 self.to_adr_num += 1
                 self.progress_send['value'] = self.to_adr_num
-                self.master.after(10, lambda: self.star_sending())
+                self.master.after(10, lambda: self.sending())
                 break
 
     def get_message(self, from_, to):
