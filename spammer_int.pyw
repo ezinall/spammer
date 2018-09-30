@@ -136,9 +136,13 @@ class Application(tk.Frame):
             self.config_ini.write(config_ini)
 
     def to_adr_list_open(self):
-        dlg = filedialog.Open(self, filetypes=[('CSV files', '*.csv'), ('All files', '*')])
+        dlg = filedialog.Open(self, filetypes=[('TXT files', '*.txt'), ('CSV files', '*.csv'), ('All files', '*')])
         to_file = dlg.show()
-        if to_file:
+        if to_file.split('.')[-1] == 'txt':
+            with open(to_file, 'r') as f:
+                self.to_adr_list = [r for r in f.read().splitlines() if r]
+                self.progress_send['maximum'] = len(self.to_adr_list)
+        elif to_file.split('.')[-1] == 'csv':
             with open(to_file, 'r') as f:
                 self.to_adr_list = [r[0] for r in csv.reader(f) if r]
                 self.progress_send['maximum'] = len(self.to_adr_list)
